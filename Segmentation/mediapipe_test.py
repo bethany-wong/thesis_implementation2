@@ -50,7 +50,8 @@ detector = htm.handDetector(detectionCon=0.75)
 
 roi_box = None # for mean shift
 roi_hist = None
-
+MIN_ROI_SIZE = 50  # Minimum side length for the ROI
+HIST_DISTANCE_THRESHOLD = 0.8  # Threshold for histogram comparison
 
 while True:
     success, img = cap.read()
@@ -89,6 +90,33 @@ while True:
         x_min, y_min, w, h = map(int, roi_box)
         x_max, y_max = x_min + w, y_min + h
         roi = img[y_min:y_max, x_min:x_max]
+
+        # Expand the ROI slightly after Mean Shift
+        padding = int(0.1 * (x_max - x_min))  # 10% of width as padding
+        x_min = max(0, x_min - padding)
+        x_max = min(wCam, x_max + padding)
+        y_min = max(0, y_min - padding)
+        y_max = min(hCam, y_max + padding)
+
+        # ensure minumum ROI size
+        if x_max - x_min < MIN_ROI_SIZE:
+            center_x = (x_max + x_min) // 2
+            x_min = center_x - MIN_ROI_SIZE // 2
+            x_max = center_x + MIN_ROI_SIZE // 2
+        if y_max - y_min < MIN_ROI_SIZE:
+            center_y = (y_max + y_min) // 2
+            y_min = center_y - MIN_ROI_SIZE // 2
+            y_max = center_y + MIN_ROI_SIZE // 2
+
+        # Confidence score based on histogram comparison
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv_roi, np.array((0., 60., 32.)), np.array((180., 255., 255.)))
+        current_hist = cv2.calcHist([hsv_roi], [0], mask, [180], [0, 180])
+        cv2.normalize(current_hist, current_hist, 0, 255, cv2.NORM_MINMAX)
+        hist_distance = cv2.compareHist(roi_hist, current_hist, cv2.HISTCMP_BHATTACHARYYA)
+        if hist_distance > HIST_DISTANCE_THRESHOLD:
+            roi_box = None
+            roi_hist = None
     else:
         roi = np.zeros((40, 40, 3), np.uint8)
 

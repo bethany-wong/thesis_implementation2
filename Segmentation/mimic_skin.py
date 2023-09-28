@@ -28,7 +28,6 @@ def transform_glove_to_skin(image_path, adjust_intensity):
     kernel = np.ones((5, 5), np.uint8)
     mask_total = cv2.morphologyEx(mask_total, cv2.MORPH_CLOSE, kernel)
 
-    # Using the provided hand HSV values to determine a suitable range
     hsv[mask_total > 0, 0] = 11  # Hue
     hsv[mask_total > 0, 1] = 95  # Saturation
     if adjust_intensity:
