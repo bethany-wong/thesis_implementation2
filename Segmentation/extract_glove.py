@@ -2,7 +2,7 @@ import cv2
 import time
 from Segmentation import handTrackingModuleMediaPipe as htm
 import numpy as np
-
+from color_segmentation import Labeler
 
 def transform_glove_to_skin(img, adjust_intensity):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -50,49 +50,54 @@ detector = htm.handDetector(detectionCon=0.75)
 
 roi_box = None # for mean shift
 roi_hist = None
-MIN_ROI_SIZE = 50  # Minimum side length for the ROI
+MIN_ROI_SIZE = 70  # Minimum side length for the ROI
 HIST_DISTANCE_THRESHOLD = 0.8  # Threshold for histogram comparison
 
 while True:
     success, img = cap.read()
     img = cv2.flip(img, 1)  # mirror the image
-    img_skin = transform_glove_to_skin(img, True)
-    img_skin = detector.findHands(img_skin)
-    lmList = detector.findPosition(img_skin, draw=False)
+    img_skin = transform_glove_to_skin(img, True) # cover glove with skin color
+    img_skin = detector.findHands(img_skin)       # use modified image to find hands using MediaPipe
+    lmList = detector.findPosition(img_skin, draw=False) # get landmarks
 
-    if lmList:
+    if lmList: # if hand was detected
         x_coords = [lm[1] for lm in lmList]
         y_coords = [lm[2] for lm in lmList]
         x_min, x_max = min(x_coords), max(x_coords)
         y_min, y_max = min(y_coords), max(y_coords)
-
-        side_length = max(x_max - x_min, y_max - y_min) # Compute the side length of the square as the maximum of width and height
-        padding = int(side_length * 0.3)  # 30% of side length as padding
-        x_min = max(0, x_min - padding) # adjust bounding box
+        # Compute bounding box to include all landmarks
+        side_length = max(x_max - x_min, y_max - y_min)
+        # adjust bounding box with 30% of side length as padding
+        padding = int(side_length * 0.3)
+        x_min = max(0, x_min - padding)
         x_max = min(wCam, x_max + padding)
         y_min = max(0, y_min - padding)
         y_max = min(hCam, y_max + padding)
 
         roi = img[y_min:y_max, x_min:x_max]
-        # Update the ROI box for Mean Shift
-        roi_box = (x_min, y_min, x_max - x_min, y_max - y_min)
-        roi = img[y_min:y_max, x_min:x_max]
+
+        roi_box = (x_min, y_min, x_max - x_min, y_max - y_min) # Update the ROI box for Mean Shift
         hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        # binary mask for filtering pixels that belong to the hand
         mask = cv2.inRange(hsv_roi, np.array((0., 60., 32.)), np.array((180., 255., 255.)))
-        roi_hist = cv2.calcHist([hsv_roi], [0], mask, [180], [0, 180])
-        cv2.normalize(roi_hist, roi_hist, 0, 255, cv2.NORM_MINMAX)
-    elif roi_hist is not None:
+        roi_hist = cv2.calcHist([hsv_roi], [0], mask, [180], [0, 180]) # calculates histogram for hue values
+        cv2.normalize(roi_hist, roi_hist, 0, 255, cv2.NORM_MINMAX) # normalize histogram to fit in (0,255)
+
+    elif roi_hist is not None: # if there was a bounding box in the previous frame
         # Use Mean Shift to estimate the new position
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        # back projection of the histogram on to the image considering only hue (dst probability belonging to the object)
         dst = cv2.calcBackProject([hsv], [0], roi_hist, [0, 180], 1)
+        # meanshift stops either after 10 iterations or if the computed mean shift vector is smaller than 1
         ret, roi_box = cv2.meanShift(dst, tuple(map(int, roi_box)),
                                      (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1))
+        # extract new ROI
         x_min, y_min, w, h = map(int, roi_box)
         x_max, y_max = x_min + w, y_min + h
         roi = img[y_min:y_max, x_min:x_max]
 
-        # Expand the ROI slightly after Mean Shift
-        padding = int(0.1 * (x_max - x_min))  # 10% of width as padding
+        # Expand the ROI slightly after Mean Shift (10%)
+        padding = int(0.1 * (x_max - x_min))
         x_min = max(0, x_min - padding)
         x_max = min(wCam, x_max + padding)
         y_min = max(0, y_min - padding)
@@ -113,26 +118,22 @@ while True:
         mask = cv2.inRange(hsv_roi, np.array((0., 60., 32.)), np.array((180., 255., 255.)))
         current_hist = cv2.calcHist([hsv_roi], [0], mask, [180], [0, 180])
         cv2.normalize(current_hist, current_hist, 0, 255, cv2.NORM_MINMAX)
+        # The Bhattacharyya distance is computed between the previously stored histogram and the current histogram
         hist_distance = cv2.compareHist(roi_hist, current_hist, cv2.HISTCMP_BHATTACHARYYA)
+        # if exceed a threshold, assume no hand is detected
         if hist_distance > HIST_DISTANCE_THRESHOLD:
             roi_box = None
             roi_hist = None
-    else:
+
+    else: # no hand detected, no bounding box
         roi = np.zeros((40, 40, 3), np.uint8)
 
+    # Resize the ROI to 40x40
+    roi_resized = cv2.resize(roi, (40, 40))
+    img[0:40, 0:40] = roi_resized
 
-    h, w, _ = roi.shape # Resize the ROI to fit within a bounding box of approximately four times 40x40 pixels
-    aspect_ratio = w / h
-    if w > h:
-        new_w = 160
-        new_h = int(new_w / aspect_ratio)
-    else:
-        new_h = 160
-        new_w = int(new_h * aspect_ratio)
-    roi_resized = cv2.resize(roi, (new_w, new_h))
-
-    # Overlay the ROI at the top left corner of the main video feed
-    img[0:new_h, 0:new_w] = roi_resized
+    labeled_roi = Labeler.label_image(roi_resized)
+    img[img.shape[0] - 40:img.shape[0], 0:40] = labeled_roi
 
     cTime = time.time()
     fps = 1 / (cTime - pTime)
