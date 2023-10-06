@@ -2,7 +2,81 @@ import cv2
 import time
 from Segmentation import handTrackingModuleMediaPipe as htm
 import numpy as np
-from color_segmentation import Labeler
+
+averages = {  # in YUV
+        1: (100, 114, 195),
+        2: (86, 130, 170),
+        3: (129, 105, 205),
+        4: (154, 100, 199),
+        5: (154, 96, 179),
+        6: (64, 135, 96),
+        7: (138, 109, 132),
+        8: (63, 148, 118),
+        9: (94, 172, 57),
+        10: (69, 158, 125)
+    }
+
+ranges = {
+    1: ([111, 177], [121, 204]),
+    2: ([126, 150], [135, 183]),
+    3: ([100, 187], [114, 226]),
+    4: ([95, 184], [105, 211]),
+    5: ([91, 170], [107, 197]),
+    6: ([129, 82], [140, 123]),
+    7: ([103, 127], [121, 140]),
+    8: ([129, 110], [157, 137]),
+    9: ([163, 45], [179, 79]),
+    10: ([133, 117], [166, 132])
+}
+
+color_labels = {
+    1: 'dark_red',
+    2: 'magenta',
+    3: 'dark_orange',
+    4: 'light_orange',
+    5: 'yellow',
+    6: 'dark_green',
+    7: 'light_green',
+    8: 'dark_blue',
+    9: 'light_blue',
+    10: 'purple'
+}
+
+def label_image(input_img):
+    input_img = cv2.bilateralFilter(input_img, d=9, sigmaColor=75, sigmaSpace=75)
+    yuv_img = cv2.cvtColor(input_img, cv2.COLOR_BGR2YUV)
+    labeled_img = np.zeros((input_img.shape[0], input_img.shape[1]), dtype=np.uint8)
+
+    # Iterate over each pixel in the YUV image
+    for i in range(yuv_img.shape[0]):
+        for j in range(yuv_img.shape[1]):
+            pixel = yuv_img[i, j]
+            min_distance = float('inf')
+            label = 0
+            for color_num, (lower, upper) in ranges.items():
+                avg_yuv = averages[color_num]
+                # Check UV ranges and Y proximity to the average Y
+                if (lower[0] <= pixel[1] <= upper[0] and
+                        lower[1] <= pixel[2] <= upper[1] and
+                        abs(avg_yuv[0] - pixel[0]) < 30):  # Y proximity threshold
+                    distance = np.linalg.norm(np.array(avg_yuv) - np.array(pixel))
+                    if distance < min_distance:
+                        min_distance = distance
+                        label = color_num
+            labeled_img[i, j] = label
+    # Create an output image initialized to ones (white)
+    output_img = np.ones_like(input_img)
+    output_img[:, :, 0] = 255  # Set Y channel to maximum brightness
+    output_img[:, :, 1:3] = 128  # Set U and V channels to neutral values
+
+    # Fill the labeled regions with their average YUV values
+    for label_num, avg_yuv in averages.items():
+        mask = (labeled_img == label_num)
+        output_img[mask] = avg_yuv
+
+    # Convert the output image back to BGR for display
+    output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_YUV2BGR)
+    return output_img_bgr, labeled_img
 
 def transform_glove_to_skin(img, adjust_intensity):
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -37,6 +111,41 @@ def transform_glove_to_skin(img, adjust_intensity):
     skin_img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
     skin_img = cv2.GaussianBlur(skin_img, (5, 5), 0)
     return skin_img
+
+
+def compute_centroids(labeled_img):
+    centroids = {}
+    labels = np.unique(labeled_img)
+
+    for label in labels:
+        if label == 0:  # Skip the background label
+            continue
+
+        # Create a binary mask for the current label
+        mask = (labeled_img == label).astype(np.uint8)
+
+        # Find connected components
+        num_labels, labels_im = cv2.connectedComponents(mask)
+
+        label_centroids = []
+        for i in range(1, num_labels):
+            y_coords, x_coords = np.where(labels_im == i)
+            centroid_x = int(np.mean(x_coords))
+            centroid_y = int(np.mean(y_coords))
+            label_centroids.append((centroid_x, centroid_y))
+
+        centroids[label] = label_centroids
+
+    return centroids
+
+
+def visualize_centroids(visualized_img, centroids):
+    for label, centroid_list in centroids.items():
+        for (x, y) in centroid_list:
+            visualized_img[y, x] = [0, 255, 255]  # Bright yellow color
+    return visualized_img
+
+
 
 wCam, hCam = 640, 480
 
@@ -132,8 +241,18 @@ while True:
     roi_resized = cv2.resize(roi, (40, 40))
     img[0:40, 0:40] = roi_resized
 
-    labeled_roi = Labeler.label_image(roi_resized)
+    labeled_roi, matr = label_image(roi_resized)
     img[img.shape[0] - 40:img.shape[0], 0:40] = labeled_roi
+    visualized_img = labeled_roi.copy()
+    centroids = compute_centroids(matr)
+
+    print(f"number of centroids: {len(centroids)}")
+    for label, centroid_list in centroids.items():
+        for (x, y) in centroid_list:
+            visualized_img[y, x] = [0, 255, 255]
+
+    visualized_img = cv2.resize(visualized_img, (visualized_img.shape[1]*10, visualized_img.shape[0]*10), interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Centroids Visualization", visualized_img)
 
     cTime = time.time()
     fps = 1 / (cTime - pTime)

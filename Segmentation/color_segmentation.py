@@ -71,13 +71,12 @@ class Labeler:
                     # Check UV ranges and Y proximity to the average Y
                     if (lower[0] <= pixel[1] <= upper[0] and
                         lower[1] <= pixel[2] <= upper[1] and
-                        abs(avg_yuv[0] - pixel[0]) < 20):  # Y proximity threshold
+                        abs(avg_yuv[0] - pixel[0]) < 30):  # Y proximity threshold
                         distance = np.linalg.norm(np.array(avg_yuv) - np.array(pixel))
                         if distance < min_distance:
                             min_distance = distance
                             label = color_num
                 labeled_img[i, j] = label
-
         # Create an output image initialized to ones (white)
         output_img = np.ones_like(input_img)
         output_img[:,:,0] = 255  # Set Y channel to maximum brightness
@@ -93,7 +92,7 @@ class Labeler:
         return output_img_bgr
 
 # Example usage:
-'''img_path = '..\dataset\example_seg2.jpg'
+'''img_path = '..\dataset\example_seg1.jpg'
 img = cv2.imread(img_path)
 output = Labeler.label_image(img)
 display_img2 = cv2.resize(output, (400, 400), interpolation=cv2.INTER_NEAREST)
