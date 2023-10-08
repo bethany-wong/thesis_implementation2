@@ -89,7 +89,7 @@ class Labeler:
 
         # Convert the output image back to BGR for display
         output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_YUV2BGR)
-        return output_img_bgr
+        return output_img_bgr, labeled_img
 
 # Example usage:
 '''img_path = '..\dataset\example_seg1.jpg'

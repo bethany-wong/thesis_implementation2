@@ -204,19 +204,19 @@ def find_nearest_neighbor(captured_image):
                       5: [(25, 24)], 7: [(26, 5)], 8: [(26, 30), (16, 15)], 10: [(14, 32), (31, 17)]}
     return None, centroids_palm
 
-'''K1_data = [
+camera_matr_L = [
     5.2508416748046875e+02, 0., 3.1661613691018283e+02,
     0., 5.1968701171875000e+02, 2.3050092757526727e+02,
     0., 0., 1.
 ]
-K1 = np.array(K1_data).reshape(3, 3)
+camera_matrix_L = np.array(camera_matr_L).reshape(3, 3)
 
-K2_data = [
+camera_matr_R = [
     6.1367822265625000e+02, 0., 3.2234956744316150e+02,
     0., 6.1147003173828125e+02, 2.3573998358738208e+02,
     0., 0., 1.
 ]
-K2 = np.array(K2_data).reshape(3, 3)'''
+camera_matrix_R = np.array(camera_matr_R).reshape(3, 3)
 
 wCam, hCam = 640, 480
 
@@ -295,8 +295,8 @@ while True:
         roi_start = (x_min, y_min)
         roi_end = (x_max, y_max)
 
-        # Expand the ROI after Mean Shift (10%)
-        padding = int(0.1 * (x_max - x_min))
+        # Expand the ROI after Mean Shift (30%)
+        padding = int(0.3 * (x_max - x_min))
         x_min = max(0, x_min - padding)
         x_max = min(wCam, x_max + padding)
         y_min = max(0, y_min - padding)
@@ -334,6 +334,7 @@ while True:
     # label every pixel in roi and put labelled image in bottom left corner
     labeled_roi, labels_matrix = label_image(roi_resized)
     img[img.shape[0] - 40:img.shape[0], 0:40] = labeled_roi
+
     # compute centroids using label matrix
     centroids_in_tiny_image = compute_centroids(labels_matrix) # dictionary of labels and respective centroids
 
