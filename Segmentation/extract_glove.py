@@ -5,7 +5,7 @@ from handTrackingModuleMediaPipe import handDetector
 import numpy as np
 from color_segmentation import Labeler
 from Query.centroid_manipulation import Centriod_processer
-from Query.database import Database
+from Query import database
 
 
 wCam, hCam = 640, 480
@@ -43,6 +43,9 @@ camera_matr_R = [
 ]
 camera_matrix_R = np.array(camera_matr_R).reshape(3, 3)
 
+db = database.Database()
+hand_detected = True
+
 while True:
     success, img = cap.read()
     img = cv2.flip(img, 1)  # mirror the image
@@ -76,6 +79,7 @@ while True:
         roi = img[y_min:y_max, x_min:x_max]
         roi_start = (x_min, y_min)
         roi_end = (x_max, y_max)
+        hand_detected = True
 
         roi_box = (x_min, y_min, x_max - x_min, y_max - y_min) # Update the ROI box for Mean Shift
         hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -98,6 +102,7 @@ while True:
         roi = img[y_min:y_max, x_min:x_max]
         roi_start = (x_min, y_min)
         roi_end = (x_max, y_max)
+        hand_detected = True
 
         # Expand the ROI after Mean Shift (30%)
         padding = int(0.3 * (x_max - x_min))
@@ -130,6 +135,7 @@ while True:
 
     else: # no hand detected, no bounding box
         roi = np.zeros((40, 40, 3), np.uint8)
+        hand_detected = False
 
     # Resize the ROI to 40x40
     roi_resized = cv2.resize(roi, (40, 40))
@@ -143,7 +149,12 @@ while True:
     centroids_in_tiny_image = Centriod_processer.compute_centroids(labels_matrix)  # dictionary of labels and respective centroids
 
     # find neighbor and place at right bottom corner
-    neighbor_img, neighbor_centroids = Database.find_nearest_neighbor(labels_matrix)
+    if hand_detected:
+        neighbor_matr, neighbor_centroids = db.find_nearest_neighbor(labels_matrix, centroids_in_tiny_image)
+        neighbor_img = Labeler.show_labelled_image(neighbor_matr)
+    else:
+        neighbor_img = np.zeros((40, 40, 3), np.uint8)
+        neighbor_centroids = None
     img[img.shape[0] - 40:img.shape[0], img.shape[1] - 40:img.shape[1]] = neighbor_img
 
     centroids_in_tiny_image, neighbor_centroids = Centriod_processer.align_centroids(centroids_in_tiny_image, neighbor_centroids)

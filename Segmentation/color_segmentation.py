@@ -77,19 +77,20 @@ class Labeler:
                             min_distance = distance
                             label = color_num
                 labeled_img[i, j] = label
-        # Create an output image initialized to ones (white)
-        output_img = np.ones_like(input_img)
-        output_img[:,:,0] = 255  # Set Y channel to maximum brightness
-        output_img[:,:,1:3] = 128  # Set U and V channels to neutral values
+        return Labeler.show_labelled_image(labeled_img), labeled_img
 
+    @staticmethod
+    def show_labelled_image(labeled_img, shape=(40, 40, 3), dtype=np.uint8):
+        output_img = np.ones(shape, dtype=dtype)
+        output_img[:, :, 0] = 255  # Set Y channel to maximum brightness
+        output_img[:, :, 1:3] = 128  # Set U and V channels to neutral values
         # Fill the labeled regions with their average YUV values
         for label_num, avg_yuv in Labeler.averages.items():
             mask = (labeled_img == label_num)
             output_img[mask] = avg_yuv
-
         # Convert the output image back to BGR for display
         output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_YUV2BGR)
-        return output_img_bgr, labeled_img
+        return output_img_bgr
 
 # Example usage:
 '''img_path = '..\dataset\example_seg1.jpg'
