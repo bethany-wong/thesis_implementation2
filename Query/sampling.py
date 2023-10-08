@@ -112,40 +112,111 @@ def transform_glove_to_skin(img, adjust_intensity):
     skin_img = cv2.GaussianBlur(skin_img, (5, 5), 0)
     return skin_img
 
-
-def compute_centroids(labeled_img):
+def compute_centroids(labeled_img, max_blobs_per_label=2, min_pixel_count=10):
     centroids = {}
     labels = np.unique(labeled_img)
-
     for label in labels:
-        if label == 0:  # Skip the background label
+        if label == 0:
             continue
-
-        # Create a binary mask for the current label
         mask = (labeled_img == label).astype(np.uint8)
-
-        # Find connected components
         num_labels, labels_im = cv2.connectedComponents(mask)
 
-        label_centroids = []
+        blob_areas = []
         for i in range(1, num_labels):
             y_coords, x_coords = np.where(labels_im == i)
+            blob_areas.append((i, len(y_coords)))
+
+        # Sort blobs by area in descending order and keep only the largest blobs
+        blob_areas.sort(key=lambda x: x[1], reverse=True)
+        blob_areas = blob_areas[:max_blobs_per_label]
+
+        label_centroids = []
+        for blob_label, area in blob_areas:
+            if area < min_pixel_count:
+                continue
+            y_coords, x_coords = np.where(labels_im == blob_label)
             centroid_x = int(np.mean(x_coords))
             centroid_y = int(np.mean(y_coords))
             label_centroids.append((centroid_x, centroid_y))
 
         centroids[label] = label_centroids
-
     return centroids
 
+def align_centroids(captured_centroids, neighbor_centroids):
+    '''Given: detected centroids of captured image and the nearest neighbor, clean the data such that the ith element
+    in captured_centroids matches with the ith element in neighbor_centroids for homography'''
+    output_captured = []
+    output_neighbor = []
+    for label, label_centroids in captured_centroids.items():
+        if len(label_centroids) > 0 and label in neighbor_centroids:
+            neigh_centroids = neighbor_centroids[label]
+            for cap_centroid in label_centroids:
+                if len(neigh_centroids) == 0:
+                    break
+                # Find the closest centroid in neighbor centroids for the same label
+                closest_neigh_centroid = min(neigh_centroids, key=lambda x: (x[0] - cap_centroid[0]) ** 2 + (
+                            x[1] - cap_centroid[1]) ** 2)
+                output_captured.append(cap_centroid)
+                output_neighbor.append(closest_neigh_centroid)
+                # Remove the matched neighbor centroid
+                neigh_centroids.remove(closest_neigh_centroid)
+    return output_captured, output_neighbor
 
-def visualize_centroids(visualized_img, centroids):
-    for label, centroid_list in centroids.items():
-        for (x, y) in centroid_list:
-            visualized_img[y, x] = [0, 255, 255]  # Bright yellow color
-    return visualized_img
+def transform_centroids(centroids_in_tiny_image, roi_start, roi_end):
+    '''Given: centroids in 40x40 tiny images, (x, y) of roi, and size of roi; Return: positions of centroids in img'''
+    scaling_factor = (roi_end[0] - roi_start[0]) / 40.0 # scaling factor is the same for x and y because roi is a square
+    transformed_centroids = []
+    for (x, y) in centroids_in_tiny_image:
+        # Scale the centroids and translate to the ROI's position in the original image
+        transformed_x = int(x * scaling_factor + roi_start[0])
+        transformed_y = int(y * scaling_factor + roi_start[1])
+        transformed_centroids.append((transformed_x, transformed_y))
+    return transformed_centroids
 
+def estimate_global_position(captured_centroids, neighbor_centroids, actual_size=40):
+    '''actual_size: average distance between centroids of color patches in mm'''
+    if len(captured_centroids) < 4:
+        return 0, 0, None
 
+    captured_centroids = np.array(captured_centroids, dtype=np.float32).reshape(-1, 1, 2)
+    neighbor_centroids = np.array(neighbor_centroids, dtype=np.float32).reshape(-1, 1, 2)
+    H, _ = cv2.findHomography(neighbor_centroids, captured_centroids)
+    reprojected_centroids = cv2.perspectiveTransform(neighbor_centroids.reshape(-1, 1, 2), H).reshape(-1, 2)
+
+    centroids_array = np.array(captured_centroids)
+    closest_distances_captured = []
+    for cent in centroids_array:
+        distances = np.linalg.norm(centroids_array - cent, axis=1) # distances from one centroid to all other centroids
+        closest_distance = np.partition(distances, 1)[1] # second smallest distance (closest one is itself)
+        closest_distances_captured.append(closest_distance)
+    avg_distance_captured = np.mean(closest_distances_captured)
+    depth = actual_size / avg_distance_captured
+
+    # pairwise distances between corresponding centroids
+    avg_scale_factor = np.mean(np.linalg.norm(reprojected_centroids - captured_centroids, axis=1))
+
+    return depth, avg_scale_factor, reprojected_centroids
+
+def find_nearest_neighbor(captured_image):
+    centroids_palm = {1: [(22, 23)], 2: [], 3: [(23, 19)], 4: [(24, 28)], 5: [(26, 4)], 7: [(29, 1)],
+                      8: [(11, 18), (28, 12)], 9: [(24, 11)], 10: [(14, 27), (20, 29)]}
+    centroids_back = {1: [(27, 13), (18, 25)], 2: [(14, 23)], 3: [(21, 21), (24, 13)], 4: [(22, 16), (11, 27)],
+                      5: [(25, 24)], 7: [(26, 5)], 8: [(26, 30), (16, 15)], 10: [(14, 32), (31, 17)]}
+    return None, centroids_palm
+
+'''K1_data = [
+    5.2508416748046875e+02, 0., 3.1661613691018283e+02,
+    0., 5.1968701171875000e+02, 2.3050092757526727e+02,
+    0., 0., 1.
+]
+K1 = np.array(K1_data).reshape(3, 3)
+
+K2_data = [
+    6.1367822265625000e+02, 0., 3.2234956744316150e+02,
+    0., 6.1147003173828125e+02, 2.3573998358738208e+02,
+    0., 0., 1.
+]
+K2 = np.array(K2_data).reshape(3, 3)'''
 
 wCam, hCam = 640, 480
 
@@ -162,6 +233,12 @@ roi_hist = None
 MIN_ROI_SIZE = 70  # Minimum side length for the ROI
 HIST_DISTANCE_THRESHOLD = 0.8  # Threshold for histogram comparison
 
+depth = 0.0
+scale_factor = 0.0
+
+roi_start = (0, 0)
+roi_end = (0, 0)
+
 while True:
     success, img = cap.read()
     img = cv2.flip(img, 1)  # mirror the image
@@ -169,21 +246,32 @@ while True:
     img_skin = detector.findHands(img_skin)       # use modified image to find hands using MediaPipe
     lmList = detector.findPosition(img_skin, draw=False) # get landmarks
 
-    if lmList: # if hand was detected
+    if lmList:  # if hand was detected
         x_coords = [lm[1] for lm in lmList]
         y_coords = [lm[2] for lm in lmList]
-        x_min, x_max = min(x_coords), max(x_coords)
-        y_min, y_max = min(y_coords), max(y_coords)
-        # Compute bounding box to include all landmarks
-        side_length = max(x_max - x_min, y_max - y_min)
-        # adjust bounding box with 30% of side length as padding
-        padding = int(side_length * 0.3)
-        x_min = max(0, x_min - padding)
-        x_max = min(wCam, x_max + padding)
-        y_min = max(0, y_min - padding)
-        y_max = min(hCam, y_max + padding)
+        x_center = sum(x_coords) // len(x_coords)
+        y_center = sum(y_coords) // len(y_coords)
+
+        side_length = max(max(x_coords) - min(x_coords), max(y_coords) - min(y_coords))
+
+        padding = int(side_length * 0.3) # adjust bounding box with 30% of side length as padding
+        side_length += 2 * padding
+
+        x_min = max(0, x_center - side_length // 2)
+        x_max = x_min + side_length
+        y_min = max(0, y_center - side_length // 2)
+        y_max = y_min + side_length
+
+        if x_max > wCam:
+            x_max = wCam
+            x_min = wCam - side_length
+        if y_max > hCam:
+            y_max = hCam
+            y_min = hCam - side_length
 
         roi = img[y_min:y_max, x_min:x_max]
+        roi_start = (x_min, y_min)
+        roi_end = (x_max, y_max)
 
         roi_box = (x_min, y_min, x_max - x_min, y_max - y_min) # Update the ROI box for Mean Shift
         hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
@@ -204,9 +292,11 @@ while True:
         x_min, y_min, w, h = map(int, roi_box)
         x_max, y_max = x_min + w, y_min + h
         roi = img[y_min:y_max, x_min:x_max]
+        roi_start = (x_min, y_min)
+        roi_end = (x_max, y_max)
 
-        # Expand the ROI after Mean Shift (30%)
-        padding = int(0.3 * (x_max - x_min))
+        # Expand the ROI after Mean Shift (10%)
+        padding = int(0.1 * (x_max - x_min))
         x_min = max(0, x_min - padding)
         x_max = min(wCam, x_max + padding)
         y_min = max(0, y_min - padding)
@@ -241,23 +331,40 @@ while True:
     roi_resized = cv2.resize(roi, (40, 40))
     img[0:40, 0:40] = roi_resized
 
-    labeled_roi, matr = label_image(roi_resized)
+    # label every pixel in roi and put labelled image in bottom left corner
+    labeled_roi, labels_matrix = label_image(roi_resized)
     img[img.shape[0] - 40:img.shape[0], 0:40] = labeled_roi
-    visualized_img = labeled_roi.copy()
-    centroids = compute_centroids(matr)
+    # compute centroids using label matrix
+    centroids_in_tiny_image = compute_centroids(labels_matrix) # dictionary of labels and respective centroids
 
-    print(f"number of centroids: {len(centroids)}")
-    for label, centroid_list in centroids.items():
-        for (x, y) in centroid_list:
-            visualized_img[y, x] = [0, 255, 255]
+    neighbor_img, neighbor_centroids = find_nearest_neighbor(labels_matrix)
+    centroids_in_tiny_image, neighbor_centroids = align_centroids(centroids_in_tiny_image, neighbor_centroids)
+    centroids = transform_centroids(centroids_in_tiny_image, roi_start, roi_end)
+    if neighbor_centroids != None:
+        depth, scale_factor, reprojected_centroids = estimate_global_position(captured_centroids=centroids, neighbor_centroids=neighbor_centroids)
 
-    visualized_img = cv2.resize(visualized_img, (visualized_img.shape[1]*10, visualized_img.shape[0]*10), interpolation=cv2.INTER_NEAREST)
-    cv2.imshow("Centroids Visualization", visualized_img)
-
+    # -----------------------------  Visualisation  -----------------------------------------------------------
     cTime = time.time()
     fps = 1 / (cTime - pTime)
     pTime = cTime
 
+    visualized_img = labeled_roi.copy()
+    # print("centroids: ", centroids)
+    for (x, y) in centroids_in_tiny_image:
+            visualized_img[y, x] = [0, 255, 255]  # mark centroids with bright yellow
+
+    visualized_img = cv2.resize(visualized_img, (visualized_img.shape[1] * 10, visualized_img.shape[0] * 10),
+                                interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Centroids Visualization", visualized_img)
+
     cv2.putText(img, f"FPS: {int(fps)}", (400, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 0))
-    cv2.imshow("Image", img)
+    cv2.putText(img, f"Depth: {round(depth, 2)}; Scale factor: {round(scale_factor, 2)}", (400, 100), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0))
+    for i, (x, y) in enumerate(centroids):
+        cv2.circle(img, (x, y), radius=5, color=(0, 255, 255), thickness=-1)  # captured centroid in yellow
+        if reprojected_centroids is not None:
+            rx, ry = map(int, reprojected_centroids[i])  # Convert the coordinates to integers
+            cv2.circle(img, (rx, ry), radius=5, color=(0, 255, 0), thickness=-1)  # reprojected centroid in green
+            cv2.line(img, (x, y), (rx, ry), color=(0, 255, 255), thickness=1)
+
+    cv2.imshow("Video", img)
     cv2.waitKey(1)
