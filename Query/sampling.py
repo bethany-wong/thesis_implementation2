@@ -283,14 +283,14 @@ while True:
         print(f"appended {labels_matrix}")
         centroids_list.append(centroids_in_tiny_image)
         print(f"appended {centroids_in_tiny_image}")
+        print(len(labeled_roi_list))
+        print(len(centroids_list))
     elif key == ord('q'):
         break
 
-print(len(labeled_roi_list))
-print(len(centroids_list))
-np.savez("..\dataset\labeled_roi_data_mini.npz", *labeled_roi_list)
+np.savez("..\dataset\labeled_roi_data.npz", *labeled_roi_list)
 centroids_list_str_keys = [{str(k): v for k, v in centroids_dict.items()} for centroids_dict in centroids_list]
-with open("..\dataset\centroids_data_mini.json", "w") as file:
+with open("..\dataset\centroids_data.json", "w") as file:
     json.dump(centroids_list_str_keys, file)
 cap.release()
 cv2.destroyAllWindows()

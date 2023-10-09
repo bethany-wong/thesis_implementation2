@@ -43,8 +43,13 @@ camera_matr_R = [
 ]
 camera_matrix_R = np.array(camera_matr_R).reshape(3, 3)
 
-db = database.Database()
+db = database.Database(use_large_db=True )
+#db.view_database()
 hand_detected = True
+
+neighbor_matr = np.zeros((40, 40), np.uint8)
+neighbor_centroids = None
+neighbor_img = np.zeros((40, 40, 3), np.uint8)
 
 while True:
     success, img = cap.read()
@@ -152,9 +157,9 @@ while True:
     if hand_detected:
         neighbor_matr, neighbor_centroids = db.find_nearest_neighbor(labels_matrix, centroids_in_tiny_image)
         neighbor_img = Labeler.show_labelled_image(neighbor_matr)
-    else:
-        neighbor_img = np.zeros((40, 40, 3), np.uint8)
-        neighbor_centroids = None
+    #else:
+        #neighbor_img = np.zeros((40, 40, 3), np.uint8)
+        #neighbor_centroids = None
     img[img.shape[0] - 40:img.shape[0], img.shape[1] - 40:img.shape[1]] = neighbor_img
 
     centroids_in_tiny_image, neighbor_centroids = Centriod_processer.align_centroids(centroids_in_tiny_image, neighbor_centroids)

@@ -2,9 +2,19 @@ import numpy as np
 import json
 import cv2
 from Segmentation.color_segmentation import Labeler
+import copy
 
 class Database:
-    def __init__(self, image_filename="..\dataset\labeled_roi_data.npz", centroids_filename="..\dataset\centroids_data.json"):
+    def __init__(self, use_mini_db=False, use_large_db=False): # mini:10, medium:50, large:100
+        if use_mini_db:
+            image_filename = "..\dataset\labeled_roi_data_mini.npz"
+            centroids_filename = "..\dataset\centroids_data_mini.json"
+        elif use_large_db:
+            image_filename = "..\dataset\labeled_roi_data.npz"
+            centroids_filename = "..\dataset\centroids_data.json"
+        else:
+            image_filename = "..\dataset\labeled_roi_data_medium.npz"
+            centroids_filename = "..\dataset\centroids_data_medium.json"
         self.images = self.load_db_images(image_filename)
         self.centroids = self.load_centroids(centroids_filename)
 
@@ -18,35 +28,29 @@ class Database:
     def compute_distance(self, matrix1, matrix2):
         total_distance = 0
         for label in range(1, 11):  # For labels 1 to 10
-            mask1 = (matrix1 == label)
-            mask2 = (matrix2 == label)
+            y1, x1 = np.where(matrix1 == label)
+            y2, x2 = np.where(matrix2 == label)
 
-            pixels1 = matrix1[mask1]
-            pixels2 = matrix2[mask2]
-
-            if len(pixels1) > 0 and len(pixels2) > 0:
-                distances = np.abs(pixels1[:, None] - pixels2)
+            if len(x1) > 0 and len(x2) > 0:
+                distances = np.sqrt((x1[:, None] - x2) ** 2 + (y1[:, None] - y2) ** 2)
                 min_distances = np.min(distances, axis=1)
                 total_distance += np.sum(min_distances)
         return total_distance
 
     def find_nearest_neighbor(self, captured_image, captured_centroids):
         '''Given captured and resized image, find closest image in database and return neighbor's image and centroids'''
-        print("called nn", captured_centroids)
         min_distance = float('inf')
-        nearest_image = None
-        nearest_centroids = None
         nearest_idx = -1
 
         for idx, db_image in enumerate(self.images):
             distance = self.compute_distance(captured_image, db_image)
+            #print(f"distance from db image no.{idx}: {distance}")
             if distance < min_distance:
                 min_distance = distance
-                nearest_image = db_image
-                nearest_centroids = self.centroids[idx]
                 nearest_idx = idx
-        print("found neighbor", idx)
-        return nearest_image, nearest_centroids
+        print("found neighbor", nearest_idx)
+        #print("centroids in db: ", self.centroids[nearest_idx])
+        return self.images[nearest_idx], copy.deepcopy(self.centroids[nearest_idx])
 
     def load_db_images(self, filename):
         images = []
@@ -64,7 +68,7 @@ class Database:
     def view_database(self):
         for i in range(len(self.images)):
             output_img = Labeler.show_labelled_image(self.images[i])
-
+            print(self.centroids[i])
             for label, positions in self.centroids[i].items():
                 for (x, y) in positions:
                     output_img[y, x] = [0, 255, 255]  # mark centroids with bright yellow
@@ -76,6 +80,25 @@ class Database:
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
+    def view_database_all(self): # generate an overview of the database, works for size 100
+        all_images = []
+        for i in range(1, len(self.images), 2):  # Step by 2 to append every 2 images
+            output_img = Labeler.show_labelled_image(self.images[i])
+            for label, positions in self.centroids[i].items():
+                for (x, y) in positions:
+                    output_img[y, x] = [0, 255, 255]  # mark centroids with bright yellow
+            all_images.append(output_img)
 
-#db = Database()
-#db.view_database()
+        rows = []
+        for i in range(0, len(all_images), 10):  # hstack 10 images at a time
+            row = np.hstack(all_images[i:i + 10])
+            rows.append(row)
+
+        all_in_one = np.vstack(rows)  # vstack the rows
+        cv2.imwrite('..\dataset\db_overview.png', all_in_one)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+
+#db = Database(use_large_db=True)
+#db.view_database_all()
