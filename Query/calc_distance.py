@@ -1,3 +1,5 @@
+# experimental program, incorporated into centroid_manipulation
+
 import cv2
 import numpy as np
 

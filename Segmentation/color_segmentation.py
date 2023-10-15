@@ -15,7 +15,7 @@ cv2.waitKey(0)
 cv2.destroyAllWindows()'''
 
 class Labeler:
-    averages = {  # in YUV
+    averages = {  # in (Y, U, V)
         1: (100, 114, 195),
         2: (86, 130, 170),
         3: (129, 105, 205),
@@ -28,7 +28,7 @@ class Labeler:
         10: (69, 158, 125)
     }
 
-    ranges = {
+    ranges = { # U and V ranges
         1: ([111, 177], [121, 204]),
         2: ([126, 150], [135, 183]),
         3: ([100, 187], [114, 226]),
@@ -56,6 +56,10 @@ class Labeler:
 
     @staticmethod
     def label_image(input_img):
+        '''
+        :param input_img:
+        :return: rgb image for visualization and label matrix
+        '''
         input_img = cv2.bilateralFilter(input_img, d=9, sigmaColor=75, sigmaSpace=75)
         yuv_img = cv2.cvtColor(input_img, cv2.COLOR_BGR2YUV)
         labeled_img = np.zeros((input_img.shape[0], input_img.shape[1]), dtype=np.uint8)
@@ -68,10 +72,10 @@ class Labeler:
                 label = 0
                 for color_num, (lower, upper) in Labeler.ranges.items():
                     avg_yuv = Labeler.averages[color_num]
-                    # Check UV ranges and Y proximity to the average Y
+                    # Check ranges for UV and calculate distance to average Y
                     if (lower[0] <= pixel[1] <= upper[0] and
                         lower[1] <= pixel[2] <= upper[1] and
-                        abs(avg_yuv[0] - pixel[0]) < 30):  # Y proximity threshold
+                        abs(avg_yuv[0] - pixel[0]) < 30):  # threshold for distance to average Y
                         distance = np.linalg.norm(np.array(avg_yuv) - np.array(pixel))
                         if distance < min_distance:
                             min_distance = distance
@@ -80,7 +84,7 @@ class Labeler:
         return Labeler.show_labelled_image(labeled_img), labeled_img
 
     @staticmethod
-    def show_labelled_image(labeled_img, shape=(40, 40, 3), dtype=np.uint8):
+    def show_labelled_image(labeled_img, shape=(40, 40, 3), dtype=np.uint8): # visualise labelled image as rbg image
         output_img = np.ones(shape, dtype=dtype)
         output_img[:, :, 0] = 255  # Set Y channel to maximum brightness
         output_img[:, :, 1:3] = 128  # Set U and V channels to neutral values
@@ -88,7 +92,7 @@ class Labeler:
         for label_num, avg_yuv in Labeler.averages.items():
             mask = (labeled_img == label_num)
             output_img[mask] = avg_yuv
-        # Convert the output image back to BGR for display
+
         output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_YUV2BGR)
         return output_img_bgr
 

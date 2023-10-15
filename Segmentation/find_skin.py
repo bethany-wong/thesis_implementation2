@@ -1,3 +1,5 @@
+# Program for finding HSI values to convert glove to skin color
+
 import cv2
 import numpy as np
 

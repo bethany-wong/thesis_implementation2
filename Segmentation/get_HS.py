@@ -1,3 +1,5 @@
+# early version of find_glove_colors
+
 import cv2
 import numpy as np
 

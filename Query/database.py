@@ -5,7 +5,7 @@ from Segmentation.color_segmentation import Labeler
 import copy
 
 class Database:
-    def __init__(self, use_mini_db=False, use_large_db=False): # mini:10, medium:50, large:100
+    def __init__(self, use_mini_db=False, use_large_db=False): # sizes - mini:10, medium:50, large:100
         if use_mini_db:
             image_filename = "..\dataset\labeled_roi_data_mini.npz"
             centroids_filename = "..\dataset\centroids_data_mini.json"
@@ -18,7 +18,7 @@ class Database:
         self.images = self.load_db_images(image_filename)
         self.centroids = self.load_centroids(centroids_filename)
 
-    def find_nearest_neighbor_proxy(self, captured_image, captured_centroids):
+    def find_nearest_neighbor_proxy(self, captured_image, captured_centroids):  # example centroids
         centroids_palm = {1: [(22, 23)], 2: [], 3: [(23, 19)], 4: [(24, 28)], 5: [(26, 4)], 7: [(29, 1)],
                           8: [(11, 18), (28, 12)], 9: [(24, 11)], 10: [(14, 27), (20, 29)]}
         centroids_back = {1: [(27, 13), (18, 25)], 2: [(14, 23)], 3: [(21, 21), (24, 13)], 4: [(22, 16), (11, 27)],
@@ -26,6 +26,7 @@ class Database:
         return np.zeros((40, 40), np.uint8), centroids_palm
 
     def compute_distance(self, matrix1, matrix2):
+        # compute sum of L2 distances between each pixel and another pixel with the same color in the other image
         total_distance = 0
         for label in range(1, 11):  # For labels 1 to 10
             y1, x1 = np.where(matrix1 == label)

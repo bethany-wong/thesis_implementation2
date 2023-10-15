@@ -1,3 +1,5 @@
+# Program for sampling colors on glove
+
 # results
 averages_names = {'dark_red': (114, 195),
             'magenta': (130, 170),
@@ -83,17 +85,14 @@ if start_sampling:
         color_name = input("Enter the color name (or 'exit' to quit): ")
         if color_name.lower() == 'exit':
             break
-
         u_values = []
         v_values = []
 
-        # Create a window and set the callback function to get_uv_values
         cv2.namedWindow('Image')
         cv2.setMouseCallback('Image', get_uv_values)
 
-        print(f"Click on points in the image that represent the color '{color_name}'. Press any key to finish sampling.")
+        print(f"Click on the color '{color_name}'. Press any key to finish sampling")
 
-        # Display the image
         cv2.imshow('Image', img)
         cv2.waitKey(0)
 
@@ -108,21 +107,19 @@ if start_sampling:
     print("Final color ranges:", color_ranges)
     print("Averages = ", averages)
 
-if start_sampling_y:
+if start_sampling_y: # same as upper while loop, but for Y values
     while True:
-        color_name = input("Enter the color num (or 'exit' to quit): ")
+        color_name = input("Enter the color number (or 'exit' to quit): ")
         if color_name.lower() == 'exit':
             break
 
         y_values = []
 
-        # Create a window and set the callback function to get_uv_values
         cv2.namedWindow('Image')
         cv2.setMouseCallback('Image', get_y_value)
 
-        print(f"Click on points in the image that represent the color '{color_name}'. Press any key to finish sampling.")
+        print(f"Click on the color '{color_name}'. Press any key to finish sampling")
 
-        # Display the image
         cv2.imshow('Image', img)
         cv2.waitKey(0)
 

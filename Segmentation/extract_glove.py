@@ -1,3 +1,5 @@
+# Main program
+
 import cv2
 import time
 from Segmentation import handTrackingModuleMediaPipe as htm
@@ -61,7 +63,7 @@ while True:
     if lmList: # if hand was detected
         x_coords = [lm[1] for lm in lmList]
         y_coords = [lm[2] for lm in lmList]
-        x_center = sum(x_coords) // len(x_coords)
+        x_center = sum(x_coords) // len(x_coords) # calculate center of all landmarks
         y_center = sum(y_coords) // len(y_coords)
 
         side_length = max(max(x_coords) - min(x_coords), max(y_coords) - min(y_coords))
@@ -81,8 +83,8 @@ while True:
             y_max = hCam
             y_min = hCam - side_length
 
-        roi = img[y_min:y_max, x_min:x_max]
-        roi_start = (x_min, y_min)
+        roi = img[y_min:y_max, x_min:x_max] # extract roi
+        roi_start = (x_min, y_min) # for reprojection later
         roi_end = (x_max, y_max)
         hand_detected = True
 
@@ -175,10 +177,17 @@ while True:
     # print("centroids: ", centroids)
     for (x, y) in centroids_in_tiny_image:
         visualized_img[y, x] = [0, 255, 255]  # mark centroids with bright yellow
-
     visualized_img = cv2.resize(visualized_img, (visualized_img.shape[1] * 10, visualized_img.shape[0] * 10),
                                 interpolation=cv2.INTER_NEAREST)
-    cv2.imshow("Centroids Visualization", visualized_img)
+    cv2.imshow("Captured Image", visualized_img)
+
+    visualized_img2 = Labeler.show_labelled_image(neighbor_matr.copy())
+    # print("centroids: ", centroids)
+    for (x, y) in neighbor_centroids:
+        visualized_img2[y, x] = [0, 255, 255]  # mark centroids with bright yellow
+    visualized_img2 = cv2.resize(visualized_img2, (visualized_img2.shape[1] * 10, visualized_img2.shape[0] * 10),
+                                interpolation=cv2.INTER_NEAREST)
+    cv2.imshow("Nearest Neighbor", visualized_img2)
 
     cv2.putText(img, f"Depth: {round(depth, 2)} mm; Scale factor: {round(scale_factor, 2)}", (350, 100),
                 cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0))

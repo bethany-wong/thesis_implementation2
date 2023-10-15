@@ -1,9 +1,15 @@
+# Program for creating a database, put list of labelled matrices into npz file and their centroids into a json file
+# Whole structure similar to extract_glove but only until labelling and finding centroids of ROI
+
 import cv2
 import time
 from Segmentation import handTrackingModuleMediaPipe as htm
 import numpy as np
 import json
 from database import Database
+from Segmentation.color_segmentation import Labeler
+from Segmentation.handTrackingModuleMediaPipe import handDetector
+from Query.centroid_manipulation import Centriod_processer
 
 averages = {  # in YUV
         1: (100, 114, 195),
@@ -44,106 +50,6 @@ color_labels = {
     10: 'purple'
 }
 
-def label_image(input_img):
-    input_img = cv2.bilateralFilter(input_img, d=9, sigmaColor=75, sigmaSpace=75)
-    yuv_img = cv2.cvtColor(input_img, cv2.COLOR_BGR2YUV)
-    labeled_img = np.zeros((input_img.shape[0], input_img.shape[1]), dtype=np.uint8)
-
-    # Iterate over each pixel in the YUV image
-    for i in range(yuv_img.shape[0]):
-        for j in range(yuv_img.shape[1]):
-            pixel = yuv_img[i, j]
-            min_distance = float('inf')
-            label = 0
-            for color_num, (lower, upper) in ranges.items():
-                avg_yuv = averages[color_num]
-                # Check UV ranges and Y proximity to the average Y
-                if (lower[0] <= pixel[1] <= upper[0] and
-                        lower[1] <= pixel[2] <= upper[1] and
-                        abs(avg_yuv[0] - pixel[0]) < 30):  # Y proximity threshold
-                    distance = np.linalg.norm(np.array(avg_yuv) - np.array(pixel))
-                    if distance < min_distance:
-                        min_distance = distance
-                        label = color_num
-            labeled_img[i, j] = label
-    # Create an output image initialized to ones (white)
-    output_img = np.ones_like(input_img)
-    output_img[:, :, 0] = 255  # Set Y channel to maximum brightness
-    output_img[:, :, 1:3] = 128  # Set U and V channels to neutral values
-
-    # Fill the labeled regions with their average YUV values
-    for label_num, avg_yuv in averages.items():
-        mask = (labeled_img == label_num)
-        output_img[mask] = avg_yuv
-
-    # Convert the output image back to BGR for display
-    output_img_bgr = cv2.cvtColor(output_img, cv2.COLOR_YUV2BGR)
-    return output_img_bgr, labeled_img
-
-def transform_glove_to_skin(img, adjust_intensity):
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-    colors = {
-        'blue': ([90, 40, 40], [150, 255, 255]),
-        'red1': ([0, 50, 50], [10, 255, 255]),
-        'red2': ([170, 30, 50], [180, 255, 255]),
-        'yellow': ([20, 50, 50], [40, 255, 255]),
-        'orange': ([10, 50, 50], [20, 255, 255]),
-        'dark_green': ([40, 20, 30], [90, 255, 150]),
-        'magenta': ([140, 50, 50], [170, 255, 255])
-    }
-
-    mask_total = np.zeros_like(hsv[:, :, 0])
-
-    for color, (lower, upper) in colors.items():
-        lower = np.array(lower)
-        upper = np.array(upper)
-        mask = cv2.inRange(hsv, lower, upper)
-        mask_total += mask
-
-    kernel = np.ones((5, 5), np.uint8)
-    mask_total = cv2.morphologyEx(mask_total, cv2.MORPH_CLOSE, kernel)
-
-    hsv[mask_total > 0, 0] = 11  # Hue
-    hsv[mask_total > 0, 1] = 95  # Saturation
-    if adjust_intensity:
-        original_value = hsv[:, :, 2]
-        hsv[mask_total > 0, 2] = cv2.normalize(original_value[mask_total > 0], None, 94, 191, cv2.NORM_MINMAX).flatten()
-
-    skin_img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-    skin_img = cv2.GaussianBlur(skin_img, (5, 5), 0)
-    return skin_img
-
-def compute_centroids(labeled_img, max_blobs_per_label=2, min_pixel_count=10):
-    centroids = {}
-    labels = np.unique(labeled_img)
-    for label in labels:
-        if label == 0:
-            continue
-        mask = (labeled_img == label).astype(np.uint8)
-        num_labels, labels_im = cv2.connectedComponents(mask)
-
-        blob_areas = []
-        for i in range(1, num_labels):
-            y_coords, x_coords = np.where(labels_im == i)
-            blob_areas.append((i, len(y_coords)))
-
-        # Sort blobs by area in descending order and keep only the largest blobs
-        blob_areas.sort(key=lambda x: x[1], reverse=True)
-        blob_areas = blob_areas[:max_blobs_per_label]
-
-        label_centroids = []
-        for blob_label, area in blob_areas:
-            if area < min_pixel_count:
-                continue
-            y_coords, x_coords = np.where(labels_im == blob_label)
-            centroid_x = int(np.mean(x_coords))
-            centroid_y = int(np.mean(y_coords))
-            label_centroids.append((centroid_x, centroid_y))
-
-        centroids[label] = label_centroids
-    return centroids
-
 wCam, hCam = 640, 480
 
 cap = cv2.VideoCapture(0)
@@ -167,7 +73,7 @@ centroids_list = []
 while True:
     success, img = cap.read()
     img = cv2.flip(img, 1)  # mirror the image
-    img_skin = transform_glove_to_skin(img, True) # cover glove with skin color
+    img_skin = handDetector.transform_glove_to_skin(img, True) # cover glove with skin color
     img_skin = detector.findHands(img_skin)       # use modified image to find hands using MediaPipe
     lmList = detector.findPosition(img_skin, draw=False) # get landmarks
 
@@ -253,11 +159,11 @@ while True:
     img[0:40, 0:40] = roi_resized
 
     # label every pixel in roi and put labelled image in bottom left corner
-    labeled_roi, labels_matrix = label_image(roi_resized)
+    labeled_roi, labels_matrix = Labeler.label_image(roi_resized)
     img[img.shape[0] - 40:img.shape[0], 0:40] = labeled_roi
 
     # compute centroids using label matrix
-    centroids_in_tiny_image = compute_centroids(labels_matrix) # dictionary of labels and respective centroids
+    centroids_in_tiny_image = Centriod_processer.compute_centroids(labels_matrix) # dictionary of labels and respective centroids
 
     # -----------------------------  Visualisation  -----------------------------------------------------------
     cTime = time.time()
