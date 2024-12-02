@@ -1,6 +1,6 @@
 # Implementation of Marker-Based Hand Tracking Method
 
-This repository contains the implementation of the second method described in the Bachelor's thesis **"Evaluating Marker-Based Hand Tracking Algorithms in Augmented Reality"**. The thesis focuses on implementing and evaluating the hand tracking method proposed by **R. Y. Wang and J. Popovič** in their paper:
+This repository contains the implementation of the second method described in the Bachelor's thesis **"Evaluating Marker-Based Hand Tracking Algorithms in Augmented Reality"**. The thesis focuses on implementing and evaluating the hand tracking method proposed by **R. Y. Wang and J. Popović** in their paper:
 
 > **"Real-Time Hand-Tracking with a Color Glove"**  
 > ACM Trans. Graph. 28.3 (July 2009).  
