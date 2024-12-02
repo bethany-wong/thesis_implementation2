@@ -8,7 +8,7 @@ This repository contains the implementation of the second method described in th
 
 This repository includes experiments, data handling procedures, and evaluation metrics used to study the effectiveness and limitations of marker-based hand tracking.
 
-![Glove used in the original paper](colorGove_palmDownPalmUp.png)
+![Glove used in the original paper](dataset/colorGove_palmDownPalmUp.png)
 
 ---
 
